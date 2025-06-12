@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// SERVIDOR BACKEND UNIVERSAL - LISTO PARA DESPLIEGUE (v2 - CORREGIDO)
+// SERVIDOR BACKEND UNIVERSAL - v3 (CORRECCIÓN FINAL)
 // -----------------------------------------------------------------------------
-// Esta versión incluye la importación de 'node-fetch' para que las llamadas
-// a la API de Gemini funcionen en el entorno de Node.js.
+// Se corrige el formato del número de teléfono en el webhook de carritos
+// para que incluya el símbolo '+' requerido por Twilio.
 // -----------------------------------------------------------------------------
 
 // --- 1. IMPORTACIONES Y CONFIGURACIÓN INICIAL ---
@@ -12,7 +12,7 @@ const bodyParser = require('body-parser');
 const admin = require('firebase-admin');
 const twilio = require('twilio');
 const cron = require('node-cron');
-const fetch = require('node-fetch'); // <-- ¡ESTA ES LA LÍNEA QUE FALTABA!
+const fetch = require('node-fetch');
 const crypto = require('crypto');
 
 const app = express();
@@ -35,7 +35,6 @@ const twilioClient = new twilio(twilioAccountSid, twilioAuthToken);
 const geminiApiKey = process.env.GEMINI_API_KEY;
 console.log('Servicios externos configurados.');
 
-// --- (El resto del código no necesita cambios) ---
 
 // --- 3. LÓGICA DE IA (GEMINI) ---
 async function generateResponseWithGemini(query, faqsContext) {
@@ -104,7 +103,8 @@ app.post('/api/webhooks/carrito-abandonado', authenticateApiKey, async (req, res
     try {
         const newAbandonedCart = {
             tiendaId: req.tiendaId,
-            cliente: `whatsapp:${clienteTelefono.replace(/ /g, '')}`,
+            // ¡CORRECCIÓN! Se añade el '+' para el formato E.164 de Twilio.
+            cliente: `whatsapp:+${clienteTelefono.replace(/ /g, '')}`,
             productos: productos,
             urlRecuperacion: urlRecuperacion,
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -124,7 +124,8 @@ app.post('/api/webhooks/pedido-creado', authenticateApiKey, async (req, res) => 
     if (!clienteTelefono) {
         return res.status(400).send('Falta el teléfono del cliente.');
     }
-    const formattedPhone = `whatsapp:${clienteTelefono.replace(/ /g, '')}`;
+    // ¡CORRECCIÓN! Se añade el '+' para que la búsqueda coincida.
+    const formattedPhone = `whatsapp:+${clienteTelefono.replace(/ /g, '')}`;
     try {
         const cartsRef = db.collection('carritosAbandonados');
         const snapshot = await cartsRef
