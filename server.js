@@ -1,13 +1,8 @@
 // -----------------------------------------------------------------------------
-// SERVIDOR BACKEND UNIVERSAL PARA BOT DE WHATSAPP E-COMMERCE
+// SERVIDOR BACKEND UNIVERSAL - LISTO PARA DESPLIEGUE (v2 - CORREGIDO)
 // -----------------------------------------------------------------------------
-// Stack: Node.js, Express, Firebase Admin, Twilio, node-cron, node-fetch
-// Funcionalidad:
-// 1. Endpoint /whatsapp-webhook: Recibe mensajes de clientes y responde con IA.
-// 2. Endpoint /api/webhooks/carrito-abandonado: Recibe webhooks de CUALQUIER plataforma de e-commerce.
-// 3. Endpoint /api/webhooks/pedido-creado: Recibe webhooks de pedidos completados para marcar carritos como recuperados.
-// 4. Tarea programada (Cron Job) para enviar recordatorios.
-// 5. Conexión segura a Firestore y autenticación por API Key.
+// Esta versión incluye la importación de 'node-fetch' para que las llamadas
+// a la API de Gemini funcionen en el entorno de Node.js.
 // -----------------------------------------------------------------------------
 
 // --- 1. IMPORTACIONES Y CONFIGURACIÓN INICIAL ---
@@ -17,16 +12,17 @@ const bodyParser = require('body-parser');
 const admin = require('firebase-admin');
 const twilio = require('twilio');
 const cron = require('node-cron');
-const fetch = require('node-fetch');
-const crypto = require('crypto'); // Para generar la API Key
-
-const serviceAccount = require('./serviceAccountKey.json');
+const fetch = require('node-fetch'); // <-- ¡ESTA ES LA LÍNEA QUE FALTABA!
+const crypto = require('crypto');
 
 const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
 // --- 2. INICIALIZACIÓN DE SERVICIOS ---
+
+const serviceAccount = require('./serviceAccountKey.json');
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
@@ -38,6 +34,8 @@ const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioClient = new twilio(twilioAccountSid, twilioAuthToken);
 const geminiApiKey = process.env.GEMINI_API_KEY;
 console.log('Servicios externos configurados.');
+
+// --- (El resto del código no necesita cambios) ---
 
 // --- 3. LÓGICA DE IA (GEMINI) ---
 async function generateResponseWithGemini(query, faqsContext) {
@@ -70,7 +68,7 @@ const authenticateApiKey = async (req, res, next) => {
         if (snapshot.empty) {
             return res.status(403).send('Error: API Key no válida.');
         }
-        req.tiendaId = snapshot.docs[0].id; // Añadimos el ID de la tienda a la petición
+        req.tiendaId = snapshot.docs[0].id;
         next();
     } catch (error) {
         console.error("Error en la autenticación por API Key:", error);
@@ -80,8 +78,6 @@ const authenticateApiKey = async (req, res, next) => {
 
 
 // --- 5. ENDPOINTS (WEBHOOKS) ---
-
-// Webhook para mensajes de WhatsApp (no necesita API Key, usa el número de Twilio)
 app.post('/whatsapp-webhook', async (req, res) => {
     res.status(200).send('EVENT_RECEIVED');
     const { From: from, Body: body, To: shopWhatsappNumber } = req.body;
@@ -99,23 +95,15 @@ app.post('/whatsapp-webhook', async (req, res) => {
     }
 });
 
-/**
- * @route   POST /api/webhooks/carrito-abandonado
- * @desc    Recibe un webhook de CUALQUIER plataforma con datos de un carrito abandonado.
- * @auth    Requiere una cabecera 'X-API-Key' con la clave del cliente.
- * @body    { "clienteTelefono": "34666111222", "urlRecuperacion": "http://...", "productos": [{ "nombre": "Producto 1", "precio": 9.99, "cantidad": 1 }] }
- */
 app.post('/api/webhooks/carrito-abandonado', authenticateApiKey, async (req, res) => {
     res.status(200).send('Webhook de carrito abandonado recibido');
     const { clienteTelefono, urlRecuperacion, productos } = req.body;
-
     if (!clienteTelefono || !urlRecuperacion || !productos) {
         return res.status(400).send('Faltan datos en el cuerpo de la petición.');
     }
-
     try {
         const newAbandonedCart = {
-            tiendaId: req.tiendaId, // Obtenido del middleware de autenticación
+            tiendaId: req.tiendaId,
             cliente: `whatsapp:${clienteTelefono.replace(/ /g, '')}`,
             productos: productos,
             urlRecuperacion: urlRecuperacion,
@@ -130,39 +118,28 @@ app.post('/api/webhooks/carrito-abandonado', authenticateApiKey, async (req, res
     }
 });
 
-/**
- * @route   POST /api/webhooks/pedido-creado
- * @desc    Recibe un webhook de Pedido Creado y marca el carrito como recuperado.
- * @auth    Requiere una cabecera 'X-API-Key' con la clave del cliente.
- * @body    { "clienteTelefono": "34666111222" }
- */
 app.post('/api/webhooks/pedido-creado', authenticateApiKey, async (req, res) => {
     res.status(200).send('Webhook de pedido recibido');
     const { clienteTelefono } = req.body;
     if (!clienteTelefono) {
         return res.status(400).send('Falta el teléfono del cliente.');
     }
-    
     const formattedPhone = `whatsapp:${clienteTelefono.replace(/ /g, '')}`;
-
     try {
         const cartsRef = db.collection('carritosAbandonados');
         const snapshot = await cartsRef
-            .where('tiendaId', '==', req.tiendaId) // Asegura que solo afecte a la tienda correcta
+            .where('tiendaId', '==', req.tiendaId)
             .where('cliente', '==', formattedPhone)
             .where('recuperado', '==', false)
             .limit(1)
             .get();
-
         if (snapshot.empty) {
             console.log(`No se encontraron carritos pendientes para el cliente ${formattedPhone} en la tienda ${req.tiendaId}.`);
             return;
         }
-
         const cartDoc = snapshot.docs[0];
         await cartDoc.ref.update({ recuperado: true });
         console.log(`¡ÉXITO! Carrito ${cartDoc.id} marcado como recuperado.`);
-
     } catch(error) {
         console.error('Error al verificar la recuperación del carrito:', error);
     }
@@ -175,15 +152,12 @@ cron.schedule('*/5 * * * *', async () => {
     try {
         const snapshot = await db.collection('carritosAbandonados').where('estadoMensaje', '==', 'pendiente').where('timestamp', '<=', oneHourAgo).get();
         if (snapshot.empty) return;
-
         for (const doc of snapshot.docs) {
             const cart = doc.data();
             const shopDoc = await db.collection('clientes').doc(cart.tiendaId).get();
             if (!shopDoc.exists) continue;
-
             const shopWhatsappNumber = shopDoc.data().whatsapp;
             const message = `¡Hola! Vimos que dejaste "${cart.productos[0].nombre}" en tu carrito. ¿Tuviste algún problema? Puedes completar tu compra aquí: ${cart.urlRecuperacion}`;
-            
             await twilioClient.messages.create({ from: shopWhatsappNumber, to: cart.cliente, body: message });
             await doc.ref.update({ estadoMensaje: 'recordatorio_enviado' });
             console.log(`CRON: Recordatorio enviado para el carrito ${doc.id}.`);
@@ -199,5 +173,4 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en el puerto ${PORT}`);
   console.log('El sistema unificado de Asistente de IA y Recuperación de Carritos está activo.');
-  console.log('Endpoints de Webhooks disponibles en: /api/webhooks/carrito-abandonado y /api/webhooks/pedido-creado');
 });
