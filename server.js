@@ -25,6 +25,7 @@ app.post(
   async (req, res) => {
     const sig = req.headers['stripe-signature'];
     let event;
+    
     try {
       event = stripe.webhooks.constructEvent(
         req.body,
@@ -32,54 +33,80 @@ app.post(
         process.env.STRIPE_WEBHOOK_SECRET
       );
     } catch (err) {
-          console.error('❌ Webhook signature failed:', err.message);
+      console.error('❌ Webhook signature failed:', err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
+
+    console.log('🔔 Webhook recibido:', event.type);
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       const userId = session.client_reference_id;
+      
+      console.log('💳 Sesión completada para usuario:', userId);
+      
       if (!userId) {
         console.warn('❌ No client_reference_id en la sesión:', session.id);
-      } else {
-        // Lee el priceId para decidir el plan
-        const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1 });
-        const priceId = lineItems.data[0].price.id;
+        return res.status(400).send('Client reference ID missing');
+      }
 
-        // Mapeo explícito de los 3 planes
+      try {
+        // Obtener line items para determinar el plan
+        const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1 });
+        const priceId = lineItems.data[0]?.price?.id;
+        
+        console.log('🏷️ Price ID detectado:', priceId);
+
+        // Mapeo explícito de los planes
         let planName = null;
+        
         if (priceId === process.env.STRIPE_PRICE_ID_ESENCIAL) {
           planName = 'esencial';
         } else if (priceId === process.env.STRIPE_PRICE_ID_PROFESIONAL) {
           planName = 'profesional';
         } else if (priceId === process.env.STRIPE_PRICE_ID_PREMIUM) {
           planName = 'premium';
-        } else {
-          console.warn('⚠️ priceId desconocido en webhook:', priceId);
         }
 
-        // Si no reconocemos el plan, respondemos error y no actualizamos Firestore
+        console.log('📋 Plan determinado:', planName);
+
         if (!planName) {
+          console.warn('⚠️ Price ID no reconocido:', priceId);
+          console.log('Variables de entorno disponibles:', {
+            esencial: process.env.STRIPE_PRICE_ID_ESENCIAL,
+            profesional: process.env.STRIPE_PRICE_ID_PROFESIONAL,
+            premium: process.env.STRIPE_PRICE_ID_PREMIUM
+          });
           return res.status(400).send('Plan no reconocido');
         }
 
-        // Escribe en Firestore, usando merge en caso de que no exista aún
+        // Actualizar Firestore
         await db
           .collection('clientes')
           .doc(userId)
           .set(
-            { plan: planName, stripeCustomerId: session.customer, status: 'active' },
+            {
+              plan: planName,
+              stripeCustomerId: session.customer,
+              status: 'active',
+              subscriptionStarted: admin.firestore.FieldValue.serverTimestamp(),
+              paymentStatus: 'completed'
+            },
             { merge: true }
           );
+
         console.log(`✅ Plan '${planName}' activado para usuario ${userId}`);
+        
+      } catch (error) {
+        console.error('❌ Error procesando webhook:', error);
+        return res.status(500).send('Error interno del servidor');
       }
     }
 
-    // devuelve siempre 200 para que Stripe no reintente por error de conexión
+    // Siempre devolver 200 para confirmar recepción
     res.sendStatus(200);
   }
 );
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
