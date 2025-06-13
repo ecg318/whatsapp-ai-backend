@@ -19,9 +19,53 @@ const app = express();
 
 // --- Middlewares ---
 app.use(cors()); // <-- ¡NUEVO! Habilita CORS para todas las rutas.
-app.post('/stripe-webhook', express.raw({type: 'application/json'}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.post(
+  '/stripe-webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (err) {
+      console.error('❌ Webhook signature failed:', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const userId = session.client_reference_id;
+      if (!userId) {
+        console.warn('❌ No client_reference_id en la sesión:', session.id);
+      } else {
+        // Lee el priceId para decidir el plan
+        const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1 });
+        const priceId  = lineItems.data[0].price.id;
+        let planName = 'esencial';
+        if (priceId === process.env.STRIPE_PRICE_ID_PROFESIONAL) planName = 'profesional';
+        if (priceId === process.env.STRIPE_PRICE_ID_PREMIUM)      planName = 'premium';
+
+        // Escribe en Firestore, usando merge en caso de que no exista aún
+        await db
+          .collection('clientes')
+          .doc(userId)
+          .set(
+            { plan: planName, stripeCustomerId: session.customer, status: 'active' },
+            { merge: true }
+          );
+        console.log(`✅ Plan '${planName}' activado para usuario ${userId}`);
+      }
+    }
+
+    // devuelve siempre 200 para que Stripe no reintente por error de conexión
+    res.sendStatus(200);
+  }
+);
+
 
 
 // --- 2. INICIALIZACIÓN DE SERVICIOS ---
