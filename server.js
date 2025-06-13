@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// SERVIDOR BACKEND UNIVERSAL - v5 (con Historial y Alertas Reales)
+// SERVIDOR BACKEND UNIVERSAL - v5.1 (Corrección Final de Alertas)
 // -----------------------------------------------------------------------------
-// - Guarda cada mensaje en una nueva colección 'conversaciones' en Firestore.
-// - La función notifyHuman ahora envía un WhatsApp real al dueño de la tienda.
+// - Se corrige el formato del número en `notifyHuman` para que siempre incluya
+//   el prefijo '+' requerido por Twilio.
 // -----------------------------------------------------------------------------
 
 // --- 1. IMPORTACIONES Y CONFIGURACIÓN INICIAL ---
@@ -30,40 +30,23 @@ const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioClient = new twilio(twilioAccountSid, twilioAuthToken);
 const geminiApiKey = process.env.GEMINI_API_KEY;
-const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000'; // URL de tu app en Vercel
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 console.log('Servicios externos configurados.');
 
 // --- 3. LÓGICA DE NOTIFICACIÓN Y CONVERSACIÓN ---
 
-/**
- * Guarda un mensaje en el historial de una conversación.
- * @param {string} conversationId - El ID de la conversación (usaremos el número del cliente).
- * @param {string} author - Quién envía el mensaje ('user' o 'bot').
- * @param {string} text - El contenido del mensaje.
- * @param {string} tiendaId - El ID de la tienda a la que pertenece la conversación.
- */
 async function saveMessageToConversation(conversationId, author, text, tiendaId) {
     const conversationRef = db.collection('conversaciones').doc(conversationId);
     await conversationRef.set({
         tiendaId: tiendaId,
         lastUpdate: admin.firestore.FieldValue.serverTimestamp(),
-        customerPhone: conversationId // Guardamos el número del cliente
+        customerPhone: conversationId
     }, { merge: true });
 
     const messageRef = conversationRef.collection('mensajes').doc();
-    await messageRef.set({
-        author,
-        text,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
-    });
+    await messageRef.set({ author, text, timestamp: admin.firestore.FieldValue.serverTimestamp() });
 }
 
-
-/**
- * Notifica al dueño de la tienda que se requiere su intervención.
- * @param {object} shopData - Los datos del documento de la tienda desde Firebase.
- * @param {string} conversationId - El ID de la conversación (número del cliente).
- */
 async function notifyHuman(shopData, conversationId) {
     if (!shopData.telefonoAlertas) {
         console.log(`ALERTA HUMANA: La tienda ${shopData.nombre} no tiene un teléfono de alertas configurado.`);
@@ -74,14 +57,18 @@ async function notifyHuman(shopData, conversationId) {
     const alertMessage = `¡Atención! Un cliente (${conversationId.replace('whatsapp:','')}) necesita ayuda. La IA no ha podido responder.\n\nPuedes leer la conversación aquí:\n${conversationLink}`;
 
     try {
+        // --- ¡CORRECCIÓN CLAVE! ---
+        // Nos aseguramos de que el número del dueño tenga el formato E.164 completo.
+        const ownerPhone = `whatsapp:+${shopData.telefonoAlertas.replace(/\D/g, '')}`;
+
         await twilioClient.messages.create({
-            from: shopData.whatsapp, // Desde el número del bot de la tienda
-            to: `whatsapp:${shopData.telefonoAlertas}`, // Al número del dueño de la tienda
+            from: shopData.whatsapp, 
+            to: ownerPhone, 
             body: alertMessage
         });
         console.log(`Alerta de intervención humana enviada a la tienda ${shopData.nombre}`);
     } catch (error) {
-        console.error(`Error al enviar la alerta de WhatsApp a la tienda ${shopData.nombre}:`, error);
+        console.error(`Error al enviar la alerta de WhatsApp a la tienda ${shopData.nombre}:`, error.message);
     }
 }
 
@@ -119,7 +106,6 @@ app.post('/whatsapp-webhook', async (req, res) => {
         const shopData = shopDoc.data();
         const tiendaId = shopDoc.id;
 
-        // Guardar el mensaje del usuario en el historial
         await saveMessageToConversation(from, 'user', body, tiendaId);
         
         let responseMessage;
@@ -135,10 +121,9 @@ app.post('/whatsapp-webhook', async (req, res) => {
             }
         } else {
             responseMessage = 'Hola, gracias por contactar. Un agente revisará tu mensaje pronto.';
-            await notifyHuman(shopData, from); // Si no hay FAQs, siempre notificar
+            await notifyHuman(shopData, from); 
         }
         
-        // Guardar la respuesta del bot en el historial
         await saveMessageToConversation(from, 'bot', responseMessage, tiendaId);
 
         await twilioClient.messages.create({ from: shopWhatsappNumber, to: from, body: responseMessage });
