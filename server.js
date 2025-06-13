@@ -123,39 +123,6 @@ app.post('/create-checkout-session', async (req, res) => {
 });
 
 
-app.post('/stripe-webhook', async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  let event;
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-  } catch (err) {
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-  if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
-      const userId = session.client_reference_id;
-      if (!userId) return res.status(400).send('Client reference ID is missing.');
-      
-      const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1 });
-      const priceId = lineItems.data[0].price.id;
-
-      let planName = 'esencial';
-      if (priceId === process.env.STRIPE_PRICE_ID_PROFESIONAL) planName = 'profesional';
-      if (priceId === process.env.STRIPE_PRICE_ID_PREMIUM) planName = 'premium';
-
-      const userRef = db.collection('clientes').doc(userId);
-      await userRef.update({
-        plan: planName,
-        stripeCustomerId: session.customer,
-        status: 'active'
-      });
-      console.log(`Plan '${planName}' activado para el usuario: ${userId}`);
-  }
-  res.status(200).send();
-});
-
-
 // --- El resto de funciones y endpoints se mantienen igual ---
 
 async function saveMessageToConversation(conversationId, author, text, tiendaId) {
