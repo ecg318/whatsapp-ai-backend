@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// SERVIDOR BACKEND UNIVERSAL - v5.2 (con Logs de Depuración)
+// SERVIDOR BACKEND UNIVERSAL - v5.3 (Corrección Enlace de Alerta)
 // -----------------------------------------------------------------------------
-// - Se añade un console.log detallado en `notifyHuman` para ver exactamente
-//   qué datos está leyendo el servidor desde Firestore.
+// - Se asegura que el enlace de la conversación enviado en la alerta de WhatsApp
+//   siempre incluya el protocolo https:// para que sea clicable.
 // -----------------------------------------------------------------------------
 
 // --- 1. IMPORTACIONES Y CONFIGURACIÓN INICIAL ---
@@ -48,18 +48,19 @@ async function saveMessageToConversation(conversationId, author, text, tiendaId)
 }
 
 async function notifyHuman(shopData, conversationId) {
-    // --- ¡NUEVO LOG DE DEPURACIÓN! ---
-    // Imprimimos el contenido exacto del objeto shopData que recibe la función.
-    console.log('--- DEBUG: Contenido completo de shopData ---');
-    console.log(JSON.stringify(shopData, null, 2));
-    console.log('--- FIN DEBUG ---');
-
     if (!shopData.telefonoAlertas) {
         console.log(`ALERTA HUMANA: La tienda ${shopData.nombre} no tiene un teléfono de alertas configurado.`);
         return;
     }
     
-    const conversationLink = `${frontendUrl}/conversations/${conversationId}`;
+    // --- ¡CORRECCIÓN CLAVE! ---
+    // Nos aseguramos de que la URL del frontend siempre tenga el protocolo.
+    let fullFrontendUrl = frontendUrl;
+    if (!fullFrontendUrl.startsWith('http')) {
+        fullFrontendUrl = `https://${fullFrontendUrl}`;
+    }
+
+    const conversationLink = `${fullFrontendUrl}/conversations/${conversationId}`;
     const alertMessage = `¡Atención! Un cliente (${conversationId.replace('whatsapp:','')}) necesita ayuda. La IA no ha podido responder.\n\nPuedes leer la conversación aquí:\n${conversationLink}`;
 
     try {
