@@ -140,8 +140,8 @@ app.post('/create-checkout-session', async (req, res) => {
             mode: 'subscription',
             line_items: [{ price: priceId, quantity: 1 }],
             client_reference_id: userId,
-            success_url: `${frontendUrl}?payment_success=true`,
-            cancel_url: `${frontendUrl}`,
+            success_url: `${frontendUrl}/payment-success?payment_success=true`,
+            cancel_url: `${frontendUrl}/subscriptions?canceled=true`,
         });
         res.send({ sessionId: session.id });
     } catch (e) {
