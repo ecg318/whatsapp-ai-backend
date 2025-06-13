@@ -32,7 +32,14 @@ app.post(
         process.env.STRIPE_WEBHOOK_SECRET
       );
     } catch (err) {
-      console.error('❌ Webhook signature failed:', err.message);
+      +    console.error('❌ Error en create-checkout-session:', {
+                      message: e.message,
+                      stack: e.stack,
+                      env: {
+                        FRONTEND_URL: process.env.FRONTEND_URL,
+                        NODE_ENV: process.env.NODE_ENV,
+                     }
+                    });
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
@@ -96,6 +103,7 @@ const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioClient = new twilio(twilioAccountSid, twilioAuthToken);
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const frontendUrl = process.env.FRONTEND_URL || 'https://whatsapp-ai-frontend-two.vercel.app';
+console.log('👉 FRONTEND_URL está configurado como:', frontendUrl);
 console.log('Servicios externos configurados.');
 
 
