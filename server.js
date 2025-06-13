@@ -32,14 +32,7 @@ app.post(
         process.env.STRIPE_WEBHOOK_SECRET
       );
     } catch (err) {
-      +    console.error('❌ Error en create-checkout-session:', {
-                      message: e.message,
-                      stack: e.stack,
-                      env: {
-                        FRONTEND_URL: process.env.FRONTEND_URL,
-                        NODE_ENV: process.env.NODE_ENV,
-                     }
-                    });
+          console.error('❌ Webhook signature failed:', err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
@@ -87,7 +80,8 @@ app.post(
   }
 );
 
-
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 
 // --- 2. INICIALIZACIÓN DE SERVICIOS ---
