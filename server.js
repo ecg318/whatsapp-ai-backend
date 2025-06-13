@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// SERVIDOR BACKEND UNIVERSAL - v5.3 (Corrección Enlace de Alerta)
+// SERVIDOR BACKEND UNIVERSAL - v5.4 (Enlace Clicable Definitivo)
 // -----------------------------------------------------------------------------
-// - Se asegura que el enlace de la conversación enviado en la alerta de WhatsApp
-//   siempre incluya el protocolo https:// para que sea clicable.
+// - Se codifica el ID de la conversación en la URL para asegurar que WhatsApp
+//   siempre lo interprete como un enlace clicable.
 // -----------------------------------------------------------------------------
 
 // --- 1. IMPORTACIONES Y CONFIGURACIÓN INICIAL ---
@@ -53,14 +53,14 @@ async function notifyHuman(shopData, conversationId) {
         return;
     }
     
-    // --- ¡CORRECCIÓN CLAVE! ---
-    // Nos aseguramos de que la URL del frontend siempre tenga el protocolo.
     let fullFrontendUrl = frontendUrl;
     if (!fullFrontendUrl.startsWith('http')) {
         fullFrontendUrl = `https://${fullFrontendUrl}`;
     }
 
-    const conversationLink = `${fullFrontendUrl}/conversations/${conversationId}`;
+    // --- ¡CORRECCIÓN CLAVE! ---
+    // Codificamos el ID de la conversación para que sea una URL segura y clicable.
+    const conversationLink = `${fullFrontendUrl}/conversations/${encodeURIComponent(conversationId)}`;
     const alertMessage = `¡Atención! Un cliente (${conversationId.replace('whatsapp:','')}) necesita ayuda. La IA no ha podido responder.\n\nPuedes leer la conversación aquí:\n${conversationLink}`;
 
     try {
