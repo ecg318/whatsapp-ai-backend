@@ -95,7 +95,7 @@ const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioClient = new twilio(twilioAccountSid, twilioAuthToken);
 const geminiApiKey = process.env.GEMINI_API_KEY;
-const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+const frontendUrl = process.env.FRONTEND_URL || 'https://whatsapp-ai-frontend-two.vercel.app';
 console.log('Servicios externos configurados.');
 
 
