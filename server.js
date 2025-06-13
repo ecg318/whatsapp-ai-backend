@@ -14,7 +14,12 @@ const cron = require('node-cron');
 const fetch = require('node-fetch');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const cors = require('cors'); // <-- ¡NUEVO!
-
+const serviceAccount = require('./serviceAccountKey.json');
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+const db = admin.firestore();
+console.log('Firebase conectado correctamente.');
 const app = express();
 
 // --- Middlewares ---
@@ -112,12 +117,8 @@ app.use(express.urlencoded({ extended: false }));
 
 
 // --- 2. INICIALIZACIÓN DE SERVICIOS ---
-const serviceAccount = require('./serviceAccountKey.json');
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
-const db = admin.firestore();
-console.log('Firebase conectado correctamente.');
+
+
 
 const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
