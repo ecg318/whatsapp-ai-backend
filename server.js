@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// SERVIDOR BACKEND UNIVERSAL - v5.1 (Corrección Final de Alertas)
+// SERVIDOR BACKEND UNIVERSAL - v5.2 (con Logs de Depuración)
 // -----------------------------------------------------------------------------
-// - Se corrige el formato del número en `notifyHuman` para que siempre incluya
-//   el prefijo '+' requerido por Twilio.
+// - Se añade un console.log detallado en `notifyHuman` para ver exactamente
+//   qué datos está leyendo el servidor desde Firestore.
 // -----------------------------------------------------------------------------
 
 // --- 1. IMPORTACIONES Y CONFIGURACIÓN INICIAL ---
@@ -48,6 +48,12 @@ async function saveMessageToConversation(conversationId, author, text, tiendaId)
 }
 
 async function notifyHuman(shopData, conversationId) {
+    // --- ¡NUEVO LOG DE DEPURACIÓN! ---
+    // Imprimimos el contenido exacto del objeto shopData que recibe la función.
+    console.log('--- DEBUG: Contenido completo de shopData ---');
+    console.log(JSON.stringify(shopData, null, 2));
+    console.log('--- FIN DEBUG ---');
+
     if (!shopData.telefonoAlertas) {
         console.log(`ALERTA HUMANA: La tienda ${shopData.nombre} no tiene un teléfono de alertas configurado.`);
         return;
@@ -57,10 +63,7 @@ async function notifyHuman(shopData, conversationId) {
     const alertMessage = `¡Atención! Un cliente (${conversationId.replace('whatsapp:','')}) necesita ayuda. La IA no ha podido responder.\n\nPuedes leer la conversación aquí:\n${conversationLink}`;
 
     try {
-        // --- ¡CORRECCIÓN CLAVE! ---
-        // Nos aseguramos de que el número del dueño tenga el formato E.164 completo.
         const ownerPhone = `whatsapp:+${shopData.telefonoAlertas.replace(/\D/g, '')}`;
-
         await twilioClient.messages.create({
             from: shopData.whatsapp, 
             to: ownerPhone, 
@@ -100,7 +103,10 @@ app.post('/whatsapp-webhook', async (req, res) => {
     
     try {
         const snapshot = await db.collection('clientes').where('whatsapp', '==', shopWhatsappNumber).limit(1).get();
-        if (snapshot.empty) return;
+        if (snapshot.empty) {
+            console.log(`No se encontró tienda para el número de Twilio: ${shopWhatsappNumber}`);
+            return;
+        }
         
         const shopDoc = snapshot.docs[0];
         const shopData = shopDoc.data();
@@ -133,7 +139,8 @@ app.post('/whatsapp-webhook', async (req, res) => {
     }
 });
 
-// --- (El resto de endpoints y el cron job no tienen cambios) ---
+
+// --- (El resto del código no cambia) ---
 const authenticateApiKey = async (req, res, next) => {
     const apiKey = req.get('X-API-Key');
     if (!apiKey) return res.status(401).send('Error: Falta la cabecera X-API-Key.');
