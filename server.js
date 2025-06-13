@@ -44,10 +44,24 @@ app.post(
       } else {
         // Lee el priceId para decidir el plan
         const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1 });
-        const priceId  = lineItems.data[0].price.id;
-        let planName = 'esencial';
-        if (priceId === process.env.STRIPE_PRICE_ID_PROFESIONAL) planName = 'profesional';
-        if (priceId === process.env.STRIPE_PRICE_ID_PREMIUM)      planName = 'premium';
+        const priceId = lineItems.data[0].price.id;
+
+        // Mapeo explícito de los 3 planes
+        let planName = null;
+        if (priceId === process.env.STRIPE_PRICE_ID_ESENCIAL) {
+          planName = 'esencial';
+        } else if (priceId === process.env.STRIPE_PRICE_ID_PROFESIONAL) {
+          planName = 'profesional';
+        } else if (priceId === process.env.STRIPE_PRICE_ID_PREMIUM) {
+          planName = 'premium';
+        } else {
+          console.warn('⚠️ priceId desconocido en webhook:', priceId);
+        }
+
+        // Si no reconocemos el plan, respondemos error y no actualizamos Firestore
+        if (!planName) {
+          return res.status(400).send('Plan no reconocido');
+        }
 
         // Escribe en Firestore, usando merge en caso de que no exista aún
         await db
@@ -65,6 +79,7 @@ app.post(
     res.sendStatus(200);
   }
 );
+
 
 
 
